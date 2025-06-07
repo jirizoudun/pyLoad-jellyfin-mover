@@ -22,6 +22,10 @@
               });
       }
       function moveFile(filename) {
+          const statusCell = document.getElementById(`status-${filename.replace(/\//g, "_")}`);
+          statusCell.innerText = "Moving...";
+          // Optionally disable the button here
+
           const type = document.querySelector(`input[name="type-${filename}"]:checked`).value;
           let showName = null;
           if (type === 'tvshow') {
@@ -55,12 +59,18 @@
                               overwrite: true
                           })
                       }).then(() => location.reload());
+                  } else {
+                      statusCell.innerText = ""; // clear status if not overwriting
                   }
               } else if (resp.status === 'ok') {
-                  location.reload();
+                  statusCell.innerText = "Done!";
+                  setTimeout(() => location.reload(), 500);
               } else {
-                  alert("Error: " + resp.message);
+                  statusCell.innerText = "Error: " + resp.message;
               }
+          })
+          .catch(err => {
+              statusCell.innerText = "Error: " + err;
           });
       }
       window.onload = function() {
@@ -78,6 +88,7 @@
         <th>Type</th>
         <th>TV Show</th>
         <th>Action</th>
+        <th>Status</th>
       </tr>
       {% for file in files %}
       <tr>
@@ -108,6 +119,7 @@
         <td>
           <button onclick="moveFile('{{ file }}')">Move</button>
         </td>
+        <td id="status-{{ file|replace('/', '_') }}"></td>
       </tr>
       {% endfor %}
     </table>
