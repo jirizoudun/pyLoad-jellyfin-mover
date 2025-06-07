@@ -81,7 +81,13 @@
       </tr>
       {% for file in files %}
       <tr>
-        <td>{{ file }}</td>
+        <td>
+          <strong>{{ file.split('/')[-1] }}</strong>
+          <span style="color: gray; font-size: smaller">
+            {% if '/' in file %} (in /{{ '/'.join(file.split('/')[:-1]) }}){%
+            endif %}
+          </span>
+        </td>
         <td>
           <label
             ><input

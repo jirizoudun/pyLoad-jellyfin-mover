@@ -17,9 +17,19 @@ def is_eligible_file(filename):
         return False
     return ext in VIDEO_EXTENSIONS + SUBTITLE_EXTENSIONS
 
+def get_all_files():
+    eligible_files = []
+    for root, dirs, files in os.walk(DOWNLOADS_DIR):
+        for file in files:
+            if is_eligible_file(file):
+                # Store as a relative path from DOWNLOADS_DIR
+                rel_path = os.path.relpath(os.path.join(root, file), DOWNLOADS_DIR)
+                eligible_files.append(rel_path)
+    return eligible_files
+
 @app.route('/')
 def index():
-    files = [f for f in os.listdir(DOWNLOADS_DIR) if is_eligible_file(f)]
+    files = get_all_files()
     show_folders = sorted([
         name for name in os.listdir(SERIES_DIR)
         if os.path.isdir(os.path.join(SERIES_DIR, name))
@@ -29,12 +39,13 @@ def index():
 @app.route('/move', methods=['POST'])
 def move_file():
     data = request.json
-    filename = data['filename']
+    rel_path = data['filename']  # This is now a relative path
     media_type = data['mediaType']
     show_name = data.get('showName')
     overwrite = data.get('overwrite', False)
 
-    src = os.path.join(DOWNLOADS_DIR, filename)
+    src = os.path.join(DOWNLOADS_DIR, rel_path)
+    filename = os.path.basename(rel_path)
 
     if media_type == 'movie':
         dst_dir = MOVIES_DIR
