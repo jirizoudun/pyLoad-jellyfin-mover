@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>pyLoad to Jellyfin Mover</title>
+    <script>
+      function refreshShows(selectId) {
+          fetch('/shows')
+              .then(r => r.json())
+              .then(shows => {
+                  const select = document.getElementById(selectId);
+                  select.innerHTML = "";
+                  shows.forEach(show => {
+                      let opt = document.createElement("option");
+                      opt.value = show;
+                      opt.innerText = show;
+                      select.appendChild(opt);
+                  });
+                  let opt = document.createElement("option");
+                  opt.value = "";
+                  opt.innerText = "-- Create new --";
+                  select.appendChild(opt);
+              });
+      }
+      function moveFile(filename) {
+          const type = document.querySelector(`input[name="type-${filename}"]:checked`).value;
+          let showName = null;
+          if (type === 'tvshow') {
+              const select = document.getElementById(`show-${filename}`);
+              showName = select.value;
+              if (!showName) {
+                  showName = prompt("Enter new show name:");
+                  if (!showName) return;
+              }
+          }
+          fetch('/move', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({
+                  filename: filename,
+                  mediaType: type,
+                  showName: showName
+              })
+          })
+          .then(r => r.json())
+          .then(resp => {
+              if (resp.status === 'conflict') {
+                  if (confirm("File exists in destination. Overwrite?")) {
+                      fetch('/move', {
+                          method: 'POST',
+                          headers: {'Content-Type': 'application/json'},
+                          body: JSON.stringify({
+                              filename: filename,
+                              mediaType: type,
+                              showName: showName,
+                              overwrite: true
+                          })
+                      }).then(() => location.reload());
+                  }
+              } else if (resp.status === 'ok') {
+                  location.reload();
+              } else {
+                  alert("Error: " + resp.message);
+              }
+          });
+      }
+      window.onload = function() {
+          {% for file in files %}
+              refreshShows("show-{{ file }}");
+          {% endfor %}
+      }
+    </script>
+  </head>
+  <body>
+    <h2>pyLoad → Jellyfin Mover</h2>
+    <table border="1" cellpadding="4">
+      <tr>
+        <th>File</th>
+        <th>Type</th>
+        <th>TV Show</th>
+        <th>Action</th>
+      </tr>
+      {% for file in files %}
+      <tr>
+        <td>{{ file }}</td>
+        <td>
+          <label
+            ><input
+              type="radio"
+              name="type-{{ file }}"
+              value="movie"
+              checked
+            />Movie</label
+          >
+          <label
+            ><input type="radio" name="type-{{ file }}" value="tvshow" />TV
+            Show</label
+          >
+        </td>
+        <td>
+          <select id="show-{{ file }}"></select>
+        </td>
+        <td>
+          <button onclick="moveFile('{{ file }}')">Move</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  </body>
+</html>

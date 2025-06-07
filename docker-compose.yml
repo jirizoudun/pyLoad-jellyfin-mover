@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  pyload-jellyfin-mover:
+    build: .
+    container_name: pyload-jellyfin-mover
+    ports:
+      - "8080:8080"
+    volumes:
+      - ~/Downloads:/app/Downloads
+      - ~/Movies:/app/Movies
+      - ~/Series:/app/Series
+    environment:
+      - FLASK_ENV=production
+    restart: unless-stopped
