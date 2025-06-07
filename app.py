@@ -1,6 +1,12 @@
 import os
 import shutil
 from flask import Flask, render_template, request, jsonify
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,  # or DEBUG for more detail
+    format="%(asctime)s [%(levelname)s] %(message)s"
+)
 
 app = Flask(__name__)
 
@@ -20,11 +26,13 @@ def is_eligible_file(filename):
 def get_all_files():
     eligible_files = []
     for root, dirs, files in os.walk(DOWNLOADS_DIR):
+        logging.info(f"Found {len(files)} files in {root}")
         for file in files:
             if is_eligible_file(file):
                 # Store as a relative path from DOWNLOADS_DIR
                 rel_path = os.path.relpath(os.path.join(root, file), DOWNLOADS_DIR)
                 eligible_files.append(rel_path)
+    logging.info(f"Found {len(eligible_files)} eligible files")
     return eligible_files
 
 @app.route('/')
@@ -34,6 +42,7 @@ def index():
         name for name in os.listdir(SERIES_DIR)
         if os.path.isdir(os.path.join(SERIES_DIR, name))
     ])
+    logging.info(f"Found {len(show_folders)} show folders")
     return render_template('index.html', files=files, shows=show_folders)
 
 @app.route('/move', methods=['POST'])
