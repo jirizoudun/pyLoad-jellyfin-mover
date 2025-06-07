@@ -37,6 +37,7 @@ def get_all_files():
 
 @app.route('/')
 def index():
+    logging.info(f"Getting all files")
     files = get_all_files()
     show_folders = sorted([
         name for name in os.listdir(SERIES_DIR)
