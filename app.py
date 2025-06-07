@@ -89,4 +89,5 @@ def get_shows():
     return jsonify(show_folders)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)
+    debug_mode = os.environ.get("FLASK_DEBUG", "0") == "1"
+    app.run(host='0.0.0.0', port=8080, debug=debug_mode)
