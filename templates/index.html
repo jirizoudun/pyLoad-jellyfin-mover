@@ -1,127 +1,192 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
-    <title>pyLoad to Jellyfin Mover</title>
+    <meta charset="UTF-8" />
+    <title>File Mover</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-white min-h-screen">
+    <nav class="flex items-center justify-between px-8 py-4 border-b">
+      <div class="flex items-center space-x-2">
+        <svg
+          class="w-6 h-6 text-black"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <circle cx="12" cy="12" r="10" stroke-width="2"></circle>
+          <rect
+            x="10"
+            y="7"
+            width="4"
+            height="10"
+            rx="1"
+            stroke-width="2"
+          ></rect>
+        </svg>
+        <span class="text-xl font-bold">File Mover</span>
+      </div>
+      <div class="flex items-center space-x-8">
+        <a href="#" class="text-black font-medium">Dashboard</a>
+        <a href="#" class="text-gray-500 hover:text-black">Settings</a>
+        <div
+          class="w-9 h-9 bg-gray-200 rounded-full flex items-center justify-center text-gray-500"
+        >
+          <svg
+            class="w-5 h-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <circle cx="12" cy="12" r="10" stroke-width="2"></circle>
+          </svg>
+        </div>
+      </div>
+    </nav>
+    <main class="px-8 py-10">
+      <h1 class="text-4xl font-bold mb-8">File Movement Dashboard</h1>
+      <div class="bg-white shadow rounded-2xl p-6 max-w-5xl mx-auto">
+        <table class="w-full text-left">
+          <thead>
+            <tr class="border-b">
+              <th class="py-3 px-4 font-medium text-gray-500">File Type</th>
+              <th class="py-3 px-4 font-medium text-gray-500">Type</th>
+              <th class="py-3 px-4 font-medium text-gray-500">TV Show</th>
+              <th class="py-3 px-4 font-medium text-gray-500">Action</th>
+              <th class="py-3 px-4 font-medium text-gray-500">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for file in files %}
+            <tr class="border-b hover:bg-gray-50">
+              <td class="py-2 px-4 text-blue-700">
+                {% if file.endswith(('.mp4', '.mkv', '.avi', '.mov', '.wmv')) %}
+                Video {% elif file.endswith(('.srt', '.sub')) %} Subtitle {%
+                else %} File {% endif %}
+              </td>
+              <td class="py-2 px-4">
+                <select
+                  id="type-{{ file|replace('/', '_') }}"
+                  class="rounded border-gray-300"
+                >
+                  <option value="movie">Movie</option>
+                  <option value="tvshow">TV Show</option>
+                </select>
+              </td>
+              <td class="py-2 px-4">
+                <select
+                  id="show-{{ file|replace('/', '_') }}"
+                  class="rounded border-gray-300"
+                >
+                  <option value="">-- Select Show --</option>
+                  {% for show in shows %}
+                  <option value="{{ show }}">{{ show }}</option>
+                  {% endfor %}
+                  <option value="__create_new__">+ Create New</option>
+                </select>
+              </td>
+              <td class="py-2 px-4">
+                <button
+                  onclick="moveFile('{{ file }}')"
+                  id="move-btn-{{ file|replace('/', '_') }}"
+                  class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-1 rounded transition"
+                >
+                  Move to Server
+                </button>
+              </td>
+              <td class="py-2 px-4">
+                <span
+                  id="status-{{ file|replace('/', '_') }}"
+                  class="inline-block px-4 py-1 rounded-full text-sm bg-gray-100 text-gray-600"
+                  >Pending</span
+                >
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </main>
     <script>
-      function refreshShows(selectId) {
-          fetch('/shows')
-              .then(r => r.json())
-              .then(shows => {
-                  const select = document.getElementById(selectId);
-                  select.innerHTML = "";
-                  shows.forEach(show => {
-                      let opt = document.createElement("option");
-                      opt.value = show;
-                      opt.innerText = show;
-                      select.appendChild(opt);
-                  });
-                  let opt = document.createElement("option");
-                  opt.value = "";
-                  opt.innerText = "-- Create new --";
-                  select.appendChild(opt);
-              });
-      }
-      function moveFile(filename) {
-          const statusCell = document.getElementById(`status-${filename.replace(/\//g, "_")}`);
-          statusCell.innerText = "Moving...";
-          // Optionally disable the button here
-
-          const type = document.querySelector(`input[name="type-${filename}"]:checked`).value;
-          let showName = null;
-          if (type === 'tvshow') {
-              const select = document.getElementById(`show-${filename}`);
-              showName = select.value;
-              if (!showName) {
-                  showName = prompt("Enter new show name:");
-                  if (!showName) return;
-              }
+      function moveFile(file) {
+        let type = document.getElementById(
+          `type-${file.replace(/\//g, "_")}`
+        ).value;
+        let showSelect = document.getElementById(
+          `show-${file.replace(/\//g, "_")}`
+        );
+        let showName = null;
+        if (type === "tvshow") {
+          if (showSelect.value === "__create_new__") {
+            showName = prompt("Enter new show name:");
+            if (!showName) return;
+          } else {
+            showName = showSelect.value;
+            if (!showName) {
+              alert("Please select or create a show.");
+              return;
+            }
           }
-          fetch('/move', {
-              method: 'POST',
-              headers: {'Content-Type': 'application/json'},
-              body: JSON.stringify({
-                  filename: filename,
-                  mediaType: type,
-                  showName: showName
-              })
-          })
-          .then(r => r.json())
-          .then(resp => {
-              if (resp.status === 'conflict') {
-                  if (confirm("File exists in destination. Overwrite?")) {
-                      fetch('/move', {
-                          method: 'POST',
-                          headers: {'Content-Type': 'application/json'},
-                          body: JSON.stringify({
-                              filename: filename,
-                              mediaType: type,
-                              showName: showName,
-                              overwrite: true
-                          })
-                      }).then(() => location.reload());
-                  } else {
-                      statusCell.innerText = ""; // clear status if not overwriting
-                  }
-              } else if (resp.status === 'ok') {
-                  statusCell.innerText = "Done!";
-                  setTimeout(() => location.reload(), 500);
+        }
+        let statusSpan = document.getElementById(
+          `status-${file.replace(/\//g, "_")}`
+        );
+        let btn = document.getElementById(
+          `move-btn-${file.replace(/\//g, "_")}`
+        );
+        statusSpan.textContent = "In Progress";
+        statusSpan.className =
+          "inline-block px-4 py-1 rounded-full text-sm bg-gray-100 text-blue-600";
+        btn.disabled = true;
+
+        fetch("/move", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filename: file,
+            mediaType: type,
+            showName: showName,
+          }),
+        })
+          .then((r) => r.json())
+          .then((resp) => {
+            if (resp.status === "conflict") {
+              if (confirm("File exists in destination. Overwrite?")) {
+                fetch("/move", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    filename: file,
+                    mediaType: type,
+                    showName: showName,
+                    overwrite: true,
+                  }),
+                }).then(() => location.reload());
               } else {
-                  statusCell.innerText = "Error: " + resp.message;
+                statusSpan.textContent = "Pending";
+                statusSpan.className =
+                  "inline-block px-4 py-1 rounded-full text-sm bg-gray-100 text-gray-600";
+                btn.disabled = false;
               }
+            } else if (resp.status === "ok") {
+              statusSpan.textContent = "Completed";
+              statusSpan.className =
+                "inline-block px-4 py-1 rounded-full text-sm bg-gray-100 text-green-600";
+              setTimeout(() => location.reload(), 1000);
+            } else {
+              statusSpan.textContent = "Failed";
+              statusSpan.className =
+                "inline-block px-4 py-1 rounded-full text-sm bg-gray-100 text-red-600";
+              btn.disabled = false;
+            }
           })
-          .catch(err => {
-              statusCell.innerText = "Error: " + err;
+          .catch((err) => {
+            statusSpan.textContent = "Failed";
+            statusSpan.className =
+              "inline-block px-4 py-1 rounded-full text-sm bg-gray-100 text-red-600";
+            btn.disabled = false;
           });
       }
-      window.onload = function() {
-          {% for file in files %}
-              refreshShows("show-{{ file }}");
-          {% endfor %}
-      }
     </script>
-  </head>
-  <body>
-    <h2>pyLoad → Jellyfin Mover</h2>
-    <table border="1" cellpadding="4">
-      <tr>
-        <th>File</th>
-        <th>Type</th>
-        <th>TV Show</th>
-        <th>Action</th>
-        <th>Status</th>
-      </tr>
-      {% for file in files %}
-      <tr>
-        <td>
-          <strong>{{ file.split('/')[-1] }}</strong>
-          <span style="color: gray; font-size: smaller">
-            {% if '/' in file %} (in /{{ '/'.join(file.split('/')[:-1]) }}){%
-            endif %}
-          </span>
-        </td>
-        <td>
-          <label
-            ><input
-              type="radio"
-              name="type-{{ file }}"
-              value="movie"
-              checked
-            />Movie</label
-          >
-          <label
-            ><input type="radio" name="type-{{ file }}" value="tvshow" />TV
-            Show</label
-          >
-        </td>
-        <td>
-          <select id="show-{{ file }}"></select>
-        </td>
-        <td>
-          <button onclick="moveFile('{{ file }}')">Move</button>
-        </td>
-        <td id="status-{{ file|replace('/', '_') }}"></td>
-      </tr>
-      {% endfor %}
-    </table>
   </body>
 </html>
