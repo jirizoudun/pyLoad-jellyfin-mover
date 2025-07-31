@@ -3,20 +3,7 @@
 ## Tasks to Implement
 
 ### High Priority
-- [ ] **Persistent file move progress tracking** - Track file move operations across browser sessions/reloads
-  - Add server-side status storage (in-memory dict or database)
-  - Track states: pending, in-progress, completed, failed
-  - **Show progress as percentage** (0-100%) with progress bar UI
-  - Update frontend to check/display persistent status on page load
-  - Handle status cleanup for completed/failed operations
-
-- [ ] **Multi-select file operations** - Select multiple files for batch operations
-  - Add checkboxes to file table for multi-selection
-  - Bulk set media type (movie/tvshow) for selected files
-  - Bulk set TV show name for selected files
-  - Batch move operation for all selected files
-  - Select all/none functionality
-  - Show selection count and bulk action controls 
+- [ ] 
 
 ### Medium Priority
 - [ ] 
@@ -35,6 +22,16 @@
   - [x] Added threaded file operations for non-blocking moves
   - [x] Status persists across browser refreshes
   - [x] Automatic cleanup of old operations after 1 hour
+
+- [x] **Multi-select file operations** - Select multiple files for batch operations
+  - [x] Added checkboxes to file table for multi-selection
+  - [x] Implemented bulk set media type (movie/tvshow) for selected files
+  - [x] Implemented bulk set TV show name for selected files
+  - [x] Created `/move-batch` API endpoint for batch operations
+  - [x] Added batch move functionality to frontend
+  - [x] Implemented select all/none functionality
+  - [x] Added selection count and bulk action controls
+  - [x] Fixed auto-reload issue that disrupted UI state during operations
 
 ---
 
