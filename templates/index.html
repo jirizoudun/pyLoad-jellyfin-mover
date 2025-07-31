@@ -44,11 +44,69 @@
       </div>
     </nav>
     <main class="px-8 py-10">
-      <h1 class="text-4xl font-bold mb-8">File Movement Dashboard</h1>
+      <div class="flex items-center justify-between mb-8">
+        <h1 class="text-4xl font-bold">File Movement Dashboard</h1>
+        <button 
+          onclick="location.reload()" 
+          class="bg-gray-600 hover:bg-gray-700 text-white font-semibold px-4 py-2 rounded transition"
+        >
+          Refresh Page
+        </button>
+      </div>
+      
+      <!-- Bulk Actions Panel -->
+      <div id="bulk-actions" class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 max-w-5xl mx-auto" style="display: none;">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center space-x-4">
+            <span id="selection-count" class="font-medium text-blue-800">0 files selected</span>
+            <button onclick="selectAll()" class="text-blue-600 hover:text-blue-800 text-sm">Select All</button>
+            <button onclick="selectNone()" class="text-blue-600 hover:text-blue-800 text-sm">Select None</button>
+          </div>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Bulk Media Type</label>
+            <select id="bulk-media-type" class="w-full rounded border-gray-300">
+              <option value="">-- Select Type --</option>
+              <option value="movie">Movie</option>
+              <option value="tvshow">TV Show</option>
+            </select>
+          </div>
+          
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Bulk TV Show</label>
+            <select id="bulk-show-name" class="w-full rounded border-gray-300">
+              <option value="">-- Select Show --</option>
+              {% for show in shows %}
+              <option value="{{ show }}">{{ show }}</option>
+              {% endfor %}
+              <option value="__create_new__">+ Create New</option>
+            </select>
+          </div>
+          
+          <div class="flex items-end">
+            <button 
+              onclick="applyBulkSettings()" 
+              class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded transition mr-2">
+              Apply to Selected
+            </button>
+            <button 
+              onclick="bulkMoveFiles()" 
+              class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-2 rounded transition">
+              Move All Selected
+            </button>
+          </div>
+        </div>
+      </div>
+      
       <div class="bg-white shadow rounded-2xl p-6 max-w-5xl mx-auto">
         <table class="w-full text-left">
           <thead>
             <tr class="border-b">
+              <th class="py-3 px-4 font-medium text-gray-500">
+                <input type="checkbox" id="select-all" class="rounded" />
+              </th>
               <th class="py-3 px-4 font-medium text-gray-500">File</th>
               <th class="py-3 px-4 font-medium text-gray-500">Type</th>
               <th class="py-3 px-4 font-medium text-gray-500">TV Show</th>
@@ -59,6 +117,14 @@
           <tbody>
             {% for file in files %}
             <tr class="border-b hover:bg-gray-50">
+              <td class="py-2 px-4">
+                <input 
+                  type="checkbox" 
+                  class="file-checkbox rounded" 
+                  data-filename="{{ file }}"
+                  id="checkbox-{{ file|replace('/', '_') }}"
+                />
+              </td>
               <td class="py-2 px-4 text-blue-700 font-mono break-all">
                 {{ file }}
               </td>
@@ -93,11 +159,30 @@
                 </button>
               </td>
               <td class="py-2 px-4">
-                <span
-                  id="status-{{ file|replace('/', '_') }}"
-                  class="inline-block px-4 py-1 rounded-full text-sm bg-gray-100 text-gray-600"
-                  >Pending</span
-                >
+                <div class="w-full">
+                  <div class="flex justify-between text-sm mb-1">
+                    <span
+                      id="status-{{ file|replace('/', '_') }}"
+                      class="font-medium text-gray-600"
+                      >Pending</span
+                    >
+                    <span
+                      id="progress-text-{{ file|replace('/', '_') }}"
+                      class="text-gray-500"
+                    ></span>
+                  </div>
+                  <div class="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      id="progress-bar-{{ file|replace('/', '_') }}"
+                      class="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                      style="width: 0%"
+                    ></div>
+                  </div>
+                  <div
+                    id="message-{{ file|replace('/', '_') }}"
+                    class="text-xs text-gray-500 mt-1"
+                  ></div>
+                </div>
               </td>
             </tr>
             {% endfor %}
@@ -106,6 +191,268 @@
       </div>
     </main>
     <script>
+      // Global polling interval
+      let statusPolling = null;
+      
+      // Multi-select functionality
+      function updateSelectionCount() {
+        const checkboxes = document.querySelectorAll('.file-checkbox:checked');
+        const count = checkboxes.length;
+        const bulkActions = document.getElementById('bulk-actions');
+        const selectionCount = document.getElementById('selection-count');
+        
+        selectionCount.textContent = `${count} file${count !== 1 ? 's' : ''} selected`;
+        bulkActions.style.display = count > 0 ? 'block' : 'none';
+        
+        // Update select-all checkbox state (only count enabled checkboxes)
+        const allEnabledCheckboxes = document.querySelectorAll('.file-checkbox:not(:disabled)');
+        const selectAllCheckbox = document.getElementById('select-all');
+        if (count === 0) {
+          selectAllCheckbox.indeterminate = false;
+          selectAllCheckbox.checked = false;
+        } else if (count === allEnabledCheckboxes.length) {
+          selectAllCheckbox.indeterminate = false;
+          selectAllCheckbox.checked = true;
+        } else {
+          selectAllCheckbox.indeterminate = true;
+        }
+      }
+      
+      function selectAll() {
+        const checkboxes = document.querySelectorAll('.file-checkbox:not(:disabled)');
+        checkboxes.forEach(cb => cb.checked = true);
+        updateSelectionCount();
+      }
+      
+      function selectNone() {
+        const checkboxes = document.querySelectorAll('.file-checkbox');
+        checkboxes.forEach(cb => cb.checked = false);
+        updateSelectionCount();
+      }
+      
+      function getSelectedFiles() {
+        const checkboxes = document.querySelectorAll('.file-checkbox:checked');
+        return Array.from(checkboxes).map(cb => cb.dataset.filename);
+      }
+      
+      function applyBulkSettings() {
+        const selectedFiles = getSelectedFiles();
+        if (selectedFiles.length === 0) {
+          alert('Please select files first');
+          return;
+        }
+        
+        const bulkMediaType = document.getElementById('bulk-media-type').value;
+        const bulkShowName = document.getElementById('bulk-show-name').value;
+        
+        if (!bulkMediaType) {
+          alert('Please select a media type');
+          return;
+        }
+        
+        let showName = null;
+        if (bulkMediaType === 'tvshow') {
+          if (bulkShowName === '__create_new__') {
+            showName = prompt('Enter new show name:');
+            if (!showName) return;
+          } else if (bulkShowName) {
+            showName = bulkShowName;
+          } else {
+            alert('Please select or create a TV show');
+            return;
+          }
+        }
+        
+        // Apply settings to each selected file
+        selectedFiles.forEach(filename => {
+          const fileId = filename.replace(/\//g, '_');
+          const typeSelect = document.getElementById(`type-${fileId}`);
+          const showSelect = document.getElementById(`show-${fileId}`);
+          
+          if (typeSelect) typeSelect.value = bulkMediaType;
+          if (showSelect && showName) showSelect.value = showName;
+        });
+        
+        alert(`Applied settings to ${selectedFiles.length} files`);
+      }
+      
+      function bulkMoveFiles() {
+        const selectedFiles = getSelectedFiles();
+        if (selectedFiles.length === 0) {
+          alert('Please select files first');
+          return;
+        }
+        
+        // Collect file data for batch operation
+        const filesToMove = [];
+        let hasErrors = false;
+        
+        selectedFiles.forEach(filename => {
+          const fileId = filename.replace(/\//g, '_');
+          const typeSelect = document.getElementById(`type-${fileId}`);
+          const showSelect = document.getElementById(`show-${fileId}`);
+          
+          if (!typeSelect || !typeSelect.value) {
+            alert(`Please set media type for ${filename}`);
+            hasErrors = true;
+            return;
+          }
+          
+          const mediaType = typeSelect.value;
+          let showName = null;
+          
+          if (mediaType === 'tvshow') {
+            if (!showSelect || !showSelect.value) {
+              alert(`Please set TV show for ${filename}`);
+              hasErrors = true;
+              return;
+            }
+            
+            if (showSelect.value === '__create_new__') {
+              showName = prompt(`Enter new show name for ${filename}:`);
+              if (!showName) {
+                hasErrors = true;
+                return;
+              }
+            } else {
+              showName = showSelect.value;
+            }
+          }
+          
+          filesToMove.push({
+            filename: filename,
+            mediaType: mediaType,
+            showName: showName
+          });
+        });
+        
+        if (hasErrors || filesToMove.length === 0) {
+          return;
+        }
+        
+        // Send batch move request
+        fetch('/move-batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ files: filesToMove })
+        })
+        .then(r => r.json())
+        .then(resp => {
+          if (resp.status === 'batch_started') {
+            let message = `Started moving ${resp.started_count} of ${resp.total_count} files`;
+            if (resp.errors && resp.errors.length > 0) {
+              message += `\n\nErrors:\n${resp.errors.join('\n')}`;
+            }
+            alert(message);
+            
+            // Clear selections after successful start
+            selectNone();
+          } else {
+            alert(`Error: ${resp.message || 'Unknown error'}`);
+          }
+        })
+        .catch(err => {
+          console.error('Batch move error:', err);
+          alert('Failed to start batch move operation');
+        });
+      }
+      
+      // Update status display for a file
+      function updateFileStatus(file, statusData) {
+        const fileId = file.replace(/\//g, "_");
+        const statusSpan = document.getElementById(`status-${fileId}`);
+        const progressBar = document.getElementById(`progress-bar-${fileId}`);
+        const progressText = document.getElementById(`progress-text-${fileId}`);
+        const messageDiv = document.getElementById(`message-${fileId}`);
+        const btn = document.getElementById(`move-btn-${fileId}`);
+        const checkbox = document.getElementById(`checkbox-${fileId}`);
+        
+        if (!statusSpan) return;
+        
+        // Update status text and styling
+        statusSpan.textContent = statusData.status.charAt(0).toUpperCase() + statusData.status.slice(1);
+        
+        // Update progress bar
+        progressBar.style.width = `${statusData.progress}%`;
+        progressText.textContent = statusData.progress > 0 ? `${statusData.progress}%` : '';
+        
+        // Update message
+        messageDiv.textContent = statusData.message || '';
+        
+        // Update styling based on status
+        switch(statusData.status) {
+          case 'pending':
+            statusSpan.className = 'font-medium text-gray-600';
+            progressBar.className = 'bg-gray-400 h-2 rounded-full transition-all duration-300';
+            btn.disabled = false;
+            break;
+          case 'in_progress':
+            statusSpan.className = 'font-medium text-blue-600';
+            progressBar.className = 'bg-blue-600 h-2 rounded-full transition-all duration-300';
+            btn.disabled = true;
+            break;
+          case 'completed':
+            statusSpan.className = 'font-medium text-green-600';
+            progressBar.className = 'bg-green-600 h-2 rounded-full transition-all duration-300';
+            btn.disabled = true;
+            // Disable checkbox for completed files and uncheck it
+            if (checkbox) {
+              checkbox.disabled = true;
+              checkbox.checked = false;
+              // Update selection count if checkbox was unchecked
+              updateSelectionCount();
+            }
+            break;
+          case 'failed':
+            statusSpan.className = 'font-medium text-red-600';
+            progressBar.className = 'bg-red-600 h-2 rounded-full transition-all duration-300';
+            btn.disabled = false;
+            break;
+        }
+      }
+      
+      // Poll for status updates
+      function pollStatus() {
+        fetch('/status')
+          .then(r => r.json())
+          .then(allStatus => {
+            // Update all files with current status
+            Object.keys(allStatus).forEach(filename => {
+              updateFileStatus(filename, allStatus[filename]);
+            });
+          })
+          .catch(err => console.error('Status polling error:', err));
+      }
+      
+      // Start polling when page loads
+      document.addEventListener('DOMContentLoaded', function() {
+        // Initial status load
+        pollStatus();
+        
+        // Poll every 2 seconds
+        statusPolling = setInterval(pollStatus, 2000);
+        
+        // Set up multi-select event listeners
+        const selectAllCheckbox = document.getElementById('select-all');
+        if (selectAllCheckbox) {
+          selectAllCheckbox.addEventListener('change', function() {
+            if (this.checked) {
+              selectAll();
+            } else {
+              selectNone();
+            }
+          });
+        }
+        
+        // Add event listeners to all file checkboxes
+        document.querySelectorAll('.file-checkbox').forEach(checkbox => {
+          checkbox.addEventListener('change', updateSelectionCount);
+        });
+        
+        // Initial selection count update
+        updateSelectionCount();
+      });
+
       function moveFile(file) {
         let type = document.getElementById(
           `type-${file.replace(/\//g, "_")}`
@@ -126,16 +473,6 @@
             }
           }
         }
-        let statusSpan = document.getElementById(
-          `status-${file.replace(/\//g, "_")}`
-        );
-        let btn = document.getElementById(
-          `move-btn-${file.replace(/\//g, "_")}`
-        );
-        statusSpan.textContent = "In Progress";
-        statusSpan.className =
-          "inline-block px-4 py-1 rounded-full text-sm bg-gray-100 text-blue-600";
-        btn.disabled = true;
 
         fetch("/move", {
           method: "POST",
@@ -148,41 +485,17 @@
         })
           .then((r) => r.json())
           .then((resp) => {
-            if (resp.status === "conflict") {
-              if (confirm("File exists in destination. Overwrite?")) {
-                fetch("/move", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    filename: file,
-                    mediaType: type,
-                    showName: showName,
-                    overwrite: true,
-                  }),
-                }).then(() => location.reload());
-              } else {
-                statusSpan.textContent = "Pending";
-                statusSpan.className =
-                  "inline-block px-4 py-1 rounded-full text-sm bg-gray-100 text-gray-600";
-                btn.disabled = false;
-              }
-            } else if (resp.status === "ok") {
-              statusSpan.textContent = "Completed";
-              statusSpan.className =
-                "inline-block px-4 py-1 rounded-full text-sm bg-gray-100 text-green-600";
-              setTimeout(() => location.reload(), 1000);
-            } else {
-              statusSpan.textContent = "Failed";
-              statusSpan.className =
-                "inline-block px-4 py-1 rounded-full text-sm bg-gray-100 text-red-600";
-              btn.disabled = false;
+            if (resp.status === "error" && resp.message === "File move already in progress") {
+              alert("File move already in progress");
+            } else if (resp.status === "started") {
+              console.log("File move started, polling will update status");
+            } else if (resp.status === "error") {
+              alert(`Error: ${resp.message}`);
             }
           })
           .catch((err) => {
-            statusSpan.textContent = "Failed";
-            statusSpan.className =
-              "inline-block px-4 py-1 rounded-full text-sm bg-gray-100 text-red-600";
-            btn.disabled = false;
+            console.error("Move request error:", err);
+            alert("Failed to start file move");
           });
       }
     </script>

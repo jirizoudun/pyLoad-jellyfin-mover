@@ -12,4 +12,7 @@ services:
       - ~/Series:/app/Series
     environment:
       - FLASK_ENV=production
+      - DOWNLOADS_DIR=/app/Downloads
+      - MOVIES_DIR=/app/Movies
+      - SERIES_DIR=/app/Series
     restart: unless-stopped
