@@ -194,6 +194,12 @@
       // Global polling interval
       let statusPolling = null;
       
+      // Helper function to generate file ID the same way as template
+      function getFileId(filename) {
+        // Must match exactly with template: {{ file|replace('/', '_') }}
+        return filename.replace(/\//g, '_');
+      }
+
       // Multi-select functionality
       function updateSelectionCount() {
         const checkboxes = document.querySelectorAll('.file-checkbox:checked');
@@ -265,13 +271,19 @@
         
         // Apply settings to each selected file
         selectedFiles.forEach(filename => {
-          const fileId = filename.replace(/\//g, '_');
+          const fileId = getFileId(filename);
           const typeSelect = document.getElementById(`type-${fileId}`);
           const showSelect = document.getElementById(`show-${fileId}`);
           
-          if (typeSelect) typeSelect.value = bulkMediaType;
-          if (showSelect && showName) showSelect.value = showName;
+          if (typeSelect) {
+            typeSelect.value = bulkMediaType;
+          }
+          
+          if (showSelect && showName) {
+            showSelect.value = showName;
+          }
         });
+        
         
         alert(`Applied settings to ${selectedFiles.length} files`);
       }
@@ -283,39 +295,72 @@
           return;
         }
         
+        // Get bulk settings
+        const bulkMediaType = document.getElementById('bulk-media-type').value;
+        const bulkShowName = document.getElementById('bulk-show-name').value;
+        
+        // Use bulk settings if provided, otherwise fall back to individual settings
+        let useBulkSettings = false;
+        if (bulkMediaType) {
+          useBulkSettings = true;
+          
+          if (bulkMediaType === 'tvshow' && !bulkShowName) {
+            alert('Please select a TV show for bulk operation');
+            return;
+          }
+        }
+        
         // Collect file data for batch operation
         const filesToMove = [];
         let hasErrors = false;
         
         selectedFiles.forEach(filename => {
-          const fileId = filename.replace(/\//g, '_');
-          const typeSelect = document.getElementById(`type-${fileId}`);
-          const showSelect = document.getElementById(`show-${fileId}`);
+          let mediaType, showName = null;
           
-          if (!typeSelect || !typeSelect.value) {
-            alert(`Please set media type for ${filename}`);
-            hasErrors = true;
-            return;
-          }
-          
-          const mediaType = typeSelect.value;
-          let showName = null;
-          
-          if (mediaType === 'tvshow') {
-            if (!showSelect || !showSelect.value) {
-              alert(`Please set TV show for ${filename}`);
+          if (useBulkSettings) {
+            // Use bulk settings directly
+            mediaType = bulkMediaType;
+            if (mediaType === 'tvshow') {
+              if (bulkShowName === '__create_new__') {
+                showName = prompt(`Enter new show name for bulk operation:`);
+                if (!showName) {
+                  hasErrors = true;
+                  return;
+                }
+              } else {
+                showName = bulkShowName;
+              }
+            }
+          } else {
+            // Fall back to individual file settings
+            const fileId = getFileId(filename);
+            const typeSelect = document.getElementById(`type-${fileId}`);
+            const showSelect = document.getElementById(`show-${fileId}`);
+            
+            if (!typeSelect || !typeSelect.value) {
+              alert(`Please set media type for ${filename} or use bulk settings`);
               hasErrors = true;
               return;
             }
             
-            if (showSelect.value === '__create_new__') {
-              showName = prompt(`Enter new show name for ${filename}:`);
-              if (!showName) {
+            mediaType = typeSelect.value;
+            
+            if (mediaType === 'tvshow') {
+              if (!showSelect || !showSelect.value) {
+                alert(`Please set TV show for ${filename} or use bulk settings`);
                 hasErrors = true;
                 return;
               }
-            } else {
-              showName = showSelect.value;
+              
+              if (showSelect.value === '__create_new__') {
+                showName = prompt(`Enter new show name for ${filename}:`);
+                if (!showName) {
+                  hasErrors = true;
+                  return;
+                }
+              } else {
+                showName = showSelect.value;
+              }
             }
           }
           
