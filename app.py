@@ -4,6 +4,7 @@ import threading
 import time
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify
+from werkzeug.utils import secure_filename
 import logging
 
 logging.basicConfig(
@@ -287,6 +288,74 @@ def move_files_batch():
         response['errors'] = errors
     
     return jsonify(response)
+
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    """Upload a file directly from the user's device to Movies or Series.
+
+    Accepts multipart/form-data with:
+      - file: the uploaded file
+      - mediaType: 'movie' or 'tvshow'
+      - showName: required when mediaType is 'tvshow'
+      - overwrite: 'true' to replace an existing destination file
+    """
+    uploaded = request.files.get('file')
+    if uploaded is None or uploaded.filename == '':
+        return jsonify({'status': 'error', 'message': 'No file provided'}), 400
+
+    media_type = request.form.get('mediaType')
+    show_name = request.form.get('showName')
+    overwrite = request.form.get('overwrite', 'false').lower() == 'true'
+
+    # Sanitize filename to avoid path traversal
+    filename = secure_filename(os.path.basename(uploaded.filename))
+    if not filename:
+        return jsonify({'status': 'error', 'message': 'Invalid filename'}), 400
+
+    # Only accept recognized video/subtitle files
+    if not is_eligible_file(filename):
+        allowed = ', '.join(VIDEO_EXTENSIONS + SUBTITLE_EXTENSIONS)
+        return jsonify({
+            'status': 'error',
+            'message': f'Unsupported file type. Allowed extensions: {allowed}'
+        }), 400
+
+    # Determine destination directory
+    if media_type == 'movie':
+        dst_dir = MOVIES_DIR
+    elif media_type == 'tvshow':
+        if not show_name:
+            return jsonify({'status': 'error', 'message': 'Show name required for TV shows'}), 400
+        show_name = secure_filename(show_name)
+        if not show_name:
+            return jsonify({'status': 'error', 'message': 'Invalid show name'}), 400
+        dst_dir = os.path.join(SERIES_DIR, show_name)
+    else:
+        return jsonify({'status': 'error', 'message': 'Invalid media type'}), 400
+
+    os.makedirs(dst_dir, exist_ok=True)
+    dst = os.path.join(dst_dir, filename)
+
+    if os.path.exists(dst) and not overwrite:
+        return jsonify({'status': 'conflict', 'message': 'File exists at destination'}), 409
+
+    try:
+        set_file_status(filename, 'in_progress', 50, 'Saving uploaded file...')
+        uploaded.save(dst)
+        set_file_status(filename, 'completed', 100, 'File uploaded successfully')
+        logging.info(f"Uploaded {filename} to {dst}")
+        return jsonify({'status': 'ok', 'message': 'File uploaded successfully', 'filename': filename})
+    except Exception as e:
+        error_msg = f'Error saving uploaded file: {str(e)}'
+        set_file_status(filename, 'failed', 0, error_msg)
+        logging.error(f"Upload failed for {filename}: {e}")
+        # Clean up partial file
+        if os.path.exists(dst):
+            try:
+                os.remove(dst)
+            except OSError:
+                pass
+        return jsonify({'status': 'error', 'message': error_msg}), 500
 
 if __name__ == '__main__':
     debug_mode = os.environ.get("FLASK_DEBUG", "0") == "1"
