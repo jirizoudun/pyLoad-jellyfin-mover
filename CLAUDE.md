@@ -81,6 +81,20 @@ docker-compose up -d
 docker-compose logs -f
 ```
 
+### Deploying / Updating (home server)
+Use the helper script, which pulls the latest code, rebuilds the image and
+starts a fresh container:
+```bash
+./deploy.sh
+```
+
+It runs `docker-compose down` before `up -d --build` on purpose. docker-compose
+v1 (1.29.2) crashes when recreating a container over a BuildKit-built image with
+`KeyError: 'ContainerConfig'`; removing the old container first avoids that
+broken recreate path. No data is lost — media lives in the bind-mounted host
+directories and move status is only kept in memory. With Docker Compose V2
+(`docker compose`, no hyphen) the bug does not occur and you can rebuild directly.
+
 ### Testing Progress Tracking
 ```bash
 # Create larger test file for progress testing
