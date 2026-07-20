@@ -159,7 +159,11 @@ def move_file():
     overwrite = data.get('overwrite', False)
 
     src = os.path.join(DOWNLOADS_DIR, rel_path)
-    filename = os.path.basename(rel_path)
+    # Status is tracked by the relative path so it matches the DOM ids the
+    # frontend builds from the same value. Only the destination file uses the
+    # basename.
+    status_key = rel_path
+    basename = os.path.basename(rel_path)
 
     # Validate source file exists
     if not os.path.exists(src):
@@ -176,16 +180,16 @@ def move_file():
     else:
         return jsonify({'status': 'error', 'message': 'Invalid media type'}), 400
 
-    dst = os.path.join(dst_dir, filename)
+    dst = os.path.join(dst_dir, basename)
 
     # Check if operation is already in progress
-    current_status = get_file_status(filename)
+    current_status = get_file_status(status_key)
     if current_status['status'] == 'in_progress':
         return jsonify({'status': 'error', 'message': 'File move already in progress'}), 409
 
     # Start file move in background thread
     def move_thread():
-        move_file_with_progress(src, dst, filename, overwrite)
+        move_file_with_progress(src, dst, status_key, overwrite)
     
     thread = threading.Thread(target=move_thread)
     thread.daemon = True
@@ -236,47 +240,51 @@ def move_files_batch():
             
             
             src = os.path.join(DOWNLOADS_DIR, rel_path)
-            filename = os.path.basename(rel_path)
-            
+            # Track status by the relative path so it matches the frontend DOM
+            # ids; the destination file uses the basename only.
+            status_key = rel_path
+            basename = os.path.basename(rel_path)
+
             # Validate source file exists
             if not os.path.exists(src):
-                errors.append(f'{filename}: Source file not found')
+                errors.append(f'{basename}: Source file not found')
                 continue
-            
+
             # Check if already in progress
-            current_status = get_file_status(filename)
+            current_status = get_file_status(status_key)
             if current_status['status'] == 'in_progress':
-                errors.append(f'{filename}: Already in progress')
+                errors.append(f'{basename}: Already in progress')
                 continue
-                
+
             # Determine destination directory
             if media_type == 'movie':
                 dst_dir = MOVIES_DIR
             elif media_type == 'tvshow':
                 if not show_name:
-                    errors.append(f'{filename}: Show name required for TV shows')
+                    errors.append(f'{basename}: Show name required for TV shows')
                     continue
                 dst_dir = os.path.join(SERIES_DIR, show_name)
                 if not os.path.exists(dst_dir):
                     os.makedirs(dst_dir, exist_ok=True)
             else:
-                errors.append(f'{filename}: Invalid media type')
+                errors.append(f'{basename}: Invalid media type')
                 continue
-            
-            dst = os.path.join(dst_dir, filename)
-            
+
+            dst = os.path.join(dst_dir, basename)
+
             # Start file move in background thread
             def move_thread(src_path, dst_path, file_name, overwrite_flag):
                 move_file_with_progress(src_path, dst_path, file_name, overwrite_flag)
-            
-            thread = threading.Thread(target=move_thread, args=(src, dst, filename, overwrite))
+
+            thread = threading.Thread(target=move_thread, args=(src, dst, status_key, overwrite))
             thread.daemon = True
             thread.start()
             
             started_count += 1
             
         except Exception as e:
-            errors.append(f'{filename}: {str(e)}')
+            label = file_data.get('filename', 'unknown') if isinstance(file_data, dict) else 'unknown'
+            errors.append(f'{label}: {str(e)}')
     
     response = {
         'status': 'batch_started',
