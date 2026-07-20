@@ -60,6 +60,52 @@ def cleanup_old_operations():
             del file_operations[filename]
             logging.info(f"Cleaned up old operation: {filename}")
 
+def get_disk_usage():
+    """Return remaining/used space for each drive backing the media directories.
+
+    Reports the drives that hold the Downloads, Movies and Series directories.
+    Deduplicates by the underlying device id (``st_dev``) so a single physical
+    drive - internal or external - is only listed once even when several of the
+    configured directories live on it. This works for both internal disks and
+    externally mounted volumes since each shows up as a distinct device.
+    """
+    locations = [
+        ('Downloads', DOWNLOADS_DIR),
+        ('Movies', MOVIES_DIR),
+        ('Series', SERIES_DIR),
+    ]
+    drives_by_device = {}
+    drives = []
+    for label, path in locations:
+        if not os.path.exists(path):
+            logging.warning(f"Skipping disk usage for missing path: {path}")
+            continue
+        try:
+            device = os.stat(path).st_dev
+            usage = shutil.disk_usage(path)
+        except OSError as e:
+            logging.warning(f"Could not read disk usage for {path}: {e}")
+            continue
+
+        if device in drives_by_device:
+            # Same physical drive as an entry we already reported; just record
+            # that this directory also lives here.
+            drives_by_device[device]['labels'].append(label)
+            continue
+
+        entry = {
+            'labels': [label],
+            'path': path,
+            'total': usage.total,
+            'used': usage.used,
+            'free': usage.free,
+            'percent_used': round(usage.used / usage.total * 100, 1) if usage.total else 0,
+        }
+        drives_by_device[device] = entry
+        drives.append(entry)
+
+    return drives
+
 def is_eligible_file(filename):
     ext = os.path.splitext(filename)[1].lower()
     if any(filename.endswith(sfx) for sfx in INCOMPLETE_SUFFIXES):
@@ -197,6 +243,11 @@ def move_file():
     
     # Return immediately - client will poll for status
     return jsonify({'status': 'started', 'message': 'File move started'})
+
+@app.route('/disk-usage', methods=['GET'])
+def disk_usage():
+    """Return remaining space for all drives backing the media directories."""
+    return jsonify(get_disk_usage())
 
 @app.route('/shows', methods=['GET'])
 def get_shows():

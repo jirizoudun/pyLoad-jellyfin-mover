@@ -54,6 +54,22 @@
         </button>
       </div>
       
+      <!-- Storage / Disk Space Panel -->
+      <div class="bg-white shadow rounded-2xl p-6 mb-6 max-w-5xl mx-auto">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-xl font-bold">Storage</h2>
+          <button
+            onclick="loadDiskUsage()"
+            class="text-blue-600 hover:text-blue-800 text-sm font-medium"
+          >
+            Refresh
+          </button>
+        </div>
+        <div id="disk-usage" class="space-y-4">
+          <p class="text-sm text-gray-500">Loading disk usage&hellip;</p>
+        </div>
+      </div>
+
       <!-- Upload Panel -->
       <div class="bg-white shadow rounded-2xl p-6 mb-6 max-w-5xl mx-auto">
         <h2 class="text-xl font-bold mb-4">Upload a file from this device</h2>
@@ -253,6 +269,68 @@
       function getFileId(filename) {
         // Must match exactly with template: {{ file|replace('/', '_') }}
         return filename.replace(/\//g, '_');
+      }
+
+      // Format a byte count into a human-readable string (e.g. "1.5 TB")
+      function formatBytes(bytes) {
+        if (bytes === 0) return "0 B";
+        const units = ["B", "KB", "MB", "GB", "TB", "PB"];
+        const i = Math.floor(Math.log(bytes) / Math.log(1024));
+        const value = bytes / Math.pow(1024, i);
+        return `${value.toFixed(value >= 100 || i === 0 ? 0 : 1)} ${units[i]}`;
+      }
+
+      // Choose a bar color based on how full the drive is
+      function usageBarColor(percentUsed) {
+        if (percentUsed >= 90) return "bg-red-600";
+        if (percentUsed >= 75) return "bg-yellow-500";
+        return "bg-green-600";
+      }
+
+      // Fetch and render remaining space for all drives
+      function loadDiskUsage() {
+        const container = document.getElementById("disk-usage");
+        fetch("/disk-usage")
+          .then((r) => r.json())
+          .then((drives) => {
+            if (!Array.isArray(drives) || drives.length === 0) {
+              container.innerHTML =
+                '<p class="text-sm text-gray-500">No drives available.</p>';
+              return;
+            }
+
+            container.innerHTML = drives
+              .map((drive) => {
+                const percent = drive.percent_used;
+                const barColor = usageBarColor(percent);
+                const name = drive.labels.join(" / ");
+                return `
+                  <div>
+                    <div class="flex justify-between items-baseline mb-1">
+                      <span class="font-medium text-gray-800">${name}</span>
+                      <span class="text-sm text-gray-500">
+                        ${formatBytes(drive.free)} free of ${formatBytes(drive.total)}
+                      </span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-3">
+                      <div
+                        class="${barColor} h-3 rounded-full transition-all duration-300"
+                        style="width: ${percent}%"
+                      ></div>
+                    </div>
+                    <div class="flex justify-between text-xs text-gray-500 mt-1">
+                      <span class="font-mono break-all">${drive.path}</span>
+                      <span>${formatBytes(drive.used)} used (${percent}%)</span>
+                    </div>
+                  </div>`;
+              })
+              .join("");
+          })
+          .catch((err) => {
+            console.error("Disk usage error:", err);
+            container.innerHTML =
+              '<p class="text-sm text-red-600">Failed to load disk usage.</p>';
+          });
       }
 
       // Multi-select functionality
@@ -528,6 +606,9 @@
       document.addEventListener('DOMContentLoaded', function() {
         // Initial status load
         pollStatus();
+
+        // Load disk usage on page load
+        loadDiskUsage();
         
         // Poll every 2 seconds
         statusPolling = setInterval(pollStatus, 2000);
