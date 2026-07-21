@@ -198,3 +198,6 @@ test/
 
 # Claude Code local settings
 .claude/settings.local.json
+# Self-update trigger flags (runtime)
+update_trigger/*
+!update_trigger/.gitkeep

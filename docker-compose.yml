@@ -10,9 +10,13 @@ services:
       - ~/Downloads:/app/Downloads
       - ~/Movies:/app/Movies
       - ~/Series:/app/Series
+      # Bind mount so the "Update & Restart" button can drop a flag file the
+      # host-side watcher picks up (see SELF_UPDATE.md).
+      - ./update_trigger:/app/update_trigger
     environment:
       - FLASK_ENV=production
       - DOWNLOADS_DIR=/app/Downloads
       - MOVIES_DIR=/app/Movies
       - SERIES_DIR=/app/Series
+      - UPDATE_TRIGGER_DIR=/app/update_trigger
     restart: unless-stopped

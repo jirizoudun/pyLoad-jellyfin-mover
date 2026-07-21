@@ -46,12 +46,21 @@
     <main class="px-8 py-10">
       <div class="flex items-center justify-between mb-8">
         <h1 class="text-4xl font-bold">File Movement Dashboard</h1>
-        <button 
-          onclick="location.reload()" 
-          class="bg-gray-600 hover:bg-gray-700 text-white font-semibold px-4 py-2 rounded transition"
-        >
-          Refresh Page
-        </button>
+        <div class="flex items-center space-x-3">
+          <button
+            onclick="location.reload()"
+            class="bg-gray-600 hover:bg-gray-700 text-white font-semibold px-4 py-2 rounded transition"
+          >
+            Refresh Page
+          </button>
+          <button
+            id="self-update-btn"
+            onclick="selfUpdate()"
+            class="bg-purple-600 hover:bg-purple-700 text-white font-semibold px-4 py-2 rounded transition"
+          >
+            Update &amp; Restart
+          </button>
+        </div>
       </div>
       
       <!-- Storage / Disk Space Panel -->
@@ -261,6 +270,23 @@
         </table>
       </div>
     </main>
+
+    <!-- Self-update overlay -->
+    <div
+      id="update-overlay"
+      class="fixed inset-0 bg-black bg-opacity-70 items-center justify-center z-50"
+      style="display: none;"
+    >
+      <div class="bg-white rounded-2xl p-8 max-w-md mx-4 text-center shadow-xl">
+        <div class="mx-auto mb-4 w-10 h-10 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin"></div>
+        <h2 class="text-xl font-bold mb-2">Updating…</h2>
+        <p id="update-overlay-message" class="text-gray-600 text-sm">
+          Pulling the latest version and rebuilding the container. This page will
+          reload automatically when the app is back — usually under a minute.
+        </p>
+      </div>
+    </div>
+
     <script>
       // Global polling interval
       let statusPolling = null;
@@ -331,6 +357,89 @@
             container.innerHTML =
               '<p class="text-sm text-red-600">Failed to load disk usage.</p>';
           });
+      }
+
+      // Trigger a host-side update (git pull + docker rebuild) and wait for the
+      // app to come back, then reload. The container restarts underneath us, so
+      // we watch for it to go down and then return before reloading.
+      function selfUpdate() {
+        const confirmed = confirm(
+          "This will pull the latest version and rebuild the app on the server.\n\n" +
+          "The page will be unavailable for a short time and will reload " +
+          "automatically once the app is back. Continue?"
+        );
+        if (!confirmed) return;
+
+        const btn = document.getElementById("self-update-btn");
+        if (btn) btn.disabled = true;
+
+        fetch("/self-update", { method: "POST" })
+          .then((r) => r.json())
+          .then((resp) => {
+            if (resp.status !== "ok") {
+              if (btn) btn.disabled = false;
+              alert(`Could not start update: ${resp.message || "Unknown error"}`);
+              return;
+            }
+            // Stop status polling so it doesn't spam errors while we're down.
+            if (statusPolling) clearInterval(statusPolling);
+            showUpdateOverlay();
+            waitForRestart();
+          })
+          .catch((err) => {
+            if (btn) btn.disabled = false;
+            console.error("Self-update request error:", err);
+            alert("Failed to trigger update. Is the server reachable?");
+          });
+      }
+
+      function showUpdateOverlay() {
+        const overlay = document.getElementById("update-overlay");
+        if (overlay) overlay.style.display = "flex";
+      }
+
+      function setUpdateOverlayMessage(text) {
+        const msg = document.getElementById("update-overlay-message");
+        if (msg) msg.textContent = text;
+      }
+
+      function waitForRestart() {
+        let wentDown = false;
+        let elapsed = 0;
+        const intervalMs = 3000;
+        const maxWaitMs = 5 * 60 * 1000; // give up after 5 minutes
+
+        const timer = setInterval(() => {
+          elapsed += intervalMs;
+
+          fetch("/status", { cache: "no-store" })
+            .then((r) => {
+              if (!r.ok) throw new Error("not ok");
+              // The server is up. Only reload once we've confirmed it went
+              // down first, so we know we're talking to the NEW instance and
+              // not the old one that's about to be torn down.
+              if (wentDown) {
+                clearInterval(timer);
+                setUpdateOverlayMessage("Update complete. Reloading…");
+                location.reload();
+              }
+            })
+            .catch(() => {
+              // Request failed -> the container is being rebuilt/restarted.
+              wentDown = true;
+              setUpdateOverlayMessage(
+                "Rebuilding the container… the app is restarting."
+              );
+            });
+
+          if (elapsed >= maxWaitMs) {
+            clearInterval(timer);
+            setUpdateOverlayMessage(
+              "This is taking longer than expected. Once the server is back, " +
+                "reload the page manually."
+            );
+          }
+        }, intervalMs);
       }
 
       // Multi-select functionality

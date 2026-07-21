@@ -17,6 +17,9 @@ app = Flask(__name__)
 DOWNLOADS_DIR = os.environ.get('DOWNLOADS_DIR', '/app/Downloads')
 MOVIES_DIR = os.environ.get('MOVIES_DIR', '/app/Movies')
 SERIES_DIR = os.environ.get('SERIES_DIR', '/app/Series')
+# Directory (bind-mounted from the host) where the app drops a flag file to
+# ask the host-side watcher to pull the latest code and rebuild the container.
+UPDATE_TRIGGER_DIR = os.environ.get('UPDATE_TRIGGER_DIR', '/app/update_trigger')
 VIDEO_EXTENSIONS = ['.mp4', '.mkv', '.avi', '.mov', '.wmv']
 SUBTITLE_EXTENSIONS = ['.srt', '.sub']
 INCOMPLETE_SUFFIXES = ['.part', '.tmp']
@@ -248,6 +251,31 @@ def move_file():
 def disk_usage():
     """Return remaining space for all drives backing the media directories."""
     return jsonify(get_disk_usage())
+
+@app.route('/self-update', methods=['POST'])
+def self_update():
+    """Request a self-update (git pull + docker rebuild).
+
+    The app runs *inside* the container it would need to rebuild, so it cannot
+    perform the docker-compose down/up itself -- doing so would kill the very
+    process handling this request. Instead it drops a flag file into a
+    bind-mounted directory that a host-side watcher picks up and acts on
+    (see SELF_UPDATE.md for the host setup).
+    """
+    try:
+        os.makedirs(UPDATE_TRIGGER_DIR, exist_ok=True)
+        flag_path = os.path.join(UPDATE_TRIGGER_DIR, 'update.request')
+        with open(flag_path, 'w') as f:
+            f.write(datetime.now().isoformat())
+        logging.info(f"Self-update requested; wrote flag to {flag_path}")
+        return jsonify({
+            'status': 'ok',
+            'message': 'Update requested. The app will rebuild and restart shortly.'
+        })
+    except Exception as e:
+        error_msg = f'Could not write update trigger: {str(e)}'
+        logging.error(error_msg)
+        return jsonify({'status': 'error', 'message': error_msg}), 500
 
 @app.route('/shows', methods=['GET'])
 def get_shows():
