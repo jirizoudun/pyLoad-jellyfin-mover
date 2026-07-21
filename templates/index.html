@@ -94,12 +94,12 @@
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">Media Type</label>
-            <select id="upload-media-type" class="w-full rounded border-gray-300" onchange="toggleUploadShow()">
+            <select id="upload-media-type" class="w-full rounded border-gray-300">
               <option value="movie">Movie</option>
               <option value="tvshow">TV Show</option>
             </select>
           </div>
-          <div id="upload-show-wrapper" style="display: none;">
+          <div id="upload-show-wrapper">
             <label class="block text-sm font-medium text-gray-700 mb-2">TV Show</label>
             <select id="upload-show-name" class="w-full rounded border-gray-300">
               <option value="">-- Select Show --</option>
@@ -742,13 +742,6 @@
         // Initial selection count update
         updateSelectionCount();
       });
-
-      // Show/hide the TV show selector in the upload panel
-      function toggleUploadShow() {
-        const type = document.getElementById("upload-media-type").value;
-        document.getElementById("upload-show-wrapper").style.display =
-          type === "tvshow" ? "block" : "none";
-      }
 
       function setUploadProgress(percent, statusText, statusClass) {
         const bar = document.getElementById("upload-progress-bar");
