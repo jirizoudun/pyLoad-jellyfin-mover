@@ -7,9 +7,13 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ~/Downloads:/app/Downloads
-      - ~/Movies:/app/Movies
-      - ~/Series:/app/Series
+      # Use absolute host paths, NOT "~": the self-update watcher runs
+      # docker-compose as root, so "~" expands to /root (empty) instead of the
+      # media owner's home. Override these via the environment (or a .env file)
+      # if your media lives elsewhere; defaults match the documented setup.
+      - ${DOWNLOADS_HOST_DIR:-/home/zoudy/Downloads}:/app/Downloads
+      - ${MOVIES_HOST_DIR:-/home/zoudy/Movies}:/app/Movies
+      - ${SERIES_HOST_DIR:-/home/zoudy/Series}:/app/Series
       # Bind mount so the "Update & Restart" button can drop a flag file the
       # host-side watcher picks up (see SELF_UPDATE.md).
       - ./update_trigger:/app/update_trigger
