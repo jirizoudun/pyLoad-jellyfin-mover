@@ -7,13 +7,17 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      # Use absolute host paths, NOT "~": the self-update watcher runs
-      # docker-compose as root, so "~" expands to /root (empty) instead of the
-      # media owner's home. Override these via the environment (or a .env file)
-      # if your media lives elsewhere; defaults match the documented setup.
-      - ${DOWNLOADS_HOST_DIR:-/home/zoudy/Downloads}:/app/Downloads
-      - ${MOVIES_HOST_DIR:-/home/zoudy/Movies}:/app/Movies
-      - ${SERIES_HOST_DIR:-/home/zoudy/Series}:/app/Series
+      # Mount the live NFS media root directly, NOT the /home/zoudy/* bind
+      # mounts. Those binds depend on fstab ordering (they can bind an empty
+      # dir if they run before the NFS mount is up), which left /app/Series
+      # empty and the TV-show selector blank. /mnt/media is the source of
+      # truth and is present whenever NFS is up. Also avoid "~": the
+      # self-update watcher runs docker-compose as root, so "~" would expand
+      # to /root (empty). Override via the environment / a .env file if your
+      # media lives elsewhere.
+      - ${DOWNLOADS_HOST_DIR:-/mnt/media/Downloads}:/app/Downloads
+      - ${MOVIES_HOST_DIR:-/mnt/media/Movies}:/app/Movies
+      - ${SERIES_HOST_DIR:-/mnt/media/Series}:/app/Series
       # Bind mount so the "Update & Restart" button can drop a flag file the
       # host-side watcher picks up (see SELF_UPDATE.md).
       - ./update_trigger:/app/update_trigger
