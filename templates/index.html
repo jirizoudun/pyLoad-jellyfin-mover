@@ -84,13 +84,18 @@
         <h2 class="text-xl font-bold mb-4">Upload a file from this device</h2>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">File</label>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Files</label>
             <input
               type="file"
               id="upload-file"
+              multiple
               accept=".mp4,.mkv,.avi,.mov,.wmv,.srt,.sub"
               class="w-full text-sm text-gray-700 file:mr-3 file:py-2 file:px-4 file:rounded file:border-0 file:bg-blue-600 file:text-white hover:file:bg-blue-700"
             />
+            <p class="text-xs text-gray-500 mt-1">
+              You can select multiple files &mdash; they'll all go to the media
+              type / TV show chosen here.
+            </p>
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">Media Type</label>
@@ -118,20 +123,10 @@
           >
             Upload
           </button>
-          <div class="flex-1">
-            <div class="flex justify-between text-sm mb-1">
-              <span id="upload-status" class="font-medium text-gray-600"></span>
-              <span id="upload-progress-text" class="text-gray-500"></span>
-            </div>
-            <div class="w-full bg-gray-200 rounded-full h-2">
-              <div
-                id="upload-progress-bar"
-                class="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                style="width: 0%"
-              ></div>
-            </div>
-          </div>
+          <span id="upload-status" class="font-medium text-gray-600"></span>
         </div>
+        <!-- Per-file upload progress rows are rendered here -->
+        <div id="upload-progress-list" class="mt-4 space-y-3"></div>
       </div>
 
       <!-- Bulk Actions Panel -->
@@ -743,21 +738,124 @@
         updateSelectionCount();
       });
 
-      function setUploadProgress(percent, statusText, statusClass) {
-        const bar = document.getElementById("upload-progress-bar");
-        const text = document.getElementById("upload-progress-text");
-        const status = document.getElementById("upload-status");
-        bar.style.width = `${percent}%`;
-        text.textContent = percent > 0 ? `${percent}%` : "";
-        if (statusText !== undefined) status.textContent = statusText;
-        if (statusClass !== undefined) status.className = statusClass;
+      // Build a progress row for a single file being uploaded. Returns an
+      // object with helpers to update that row's bar/status text.
+      function createUploadRow(fileName) {
+        const list = document.getElementById("upload-progress-list");
+        const row = document.createElement("div");
+        row.innerHTML = `
+          <div class="flex justify-between text-sm mb-1">
+            <span class="font-mono text-gray-700 break-all mr-4">${fileName}</span>
+            <span class="row-status font-medium text-gray-600 whitespace-nowrap"></span>
+          </div>
+          <div class="w-full bg-gray-200 rounded-full h-2">
+            <div class="row-bar bg-blue-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+          </div>`;
+        list.appendChild(row);
+
+        const bar = row.querySelector(".row-bar");
+        const status = row.querySelector(".row-status");
+        return {
+          setProgress(percent, statusText, statusClass) {
+            bar.style.width = `${percent}%`;
+            if (statusText !== undefined) status.textContent = statusText;
+            if (statusClass !== undefined) status.className = statusClass;
+          },
+          setBarClass(cls) {
+            bar.className = cls;
+          },
+        };
       }
 
-      function uploadFile() {
+      // Upload a single file, reusing the /upload endpoint. Resolves with a
+      // result describing the outcome; handles the overwrite confirmation for
+      // destination conflicts. Never rejects so a bad file doesn't abort the
+      // rest of the queue.
+      function uploadSingleFile(file, mediaType, showName, row) {
+        return new Promise((resolve) => {
+          const doUpload = (overwrite) => {
+            const formData = new FormData();
+            formData.append("file", file);
+            formData.append("mediaType", mediaType);
+            if (showName) formData.append("showName", showName);
+            formData.append("overwrite", overwrite ? "true" : "false");
+
+            row.setBarClass(
+              "row-bar bg-blue-600 h-2 rounded-full transition-all duration-300"
+            );
+            row.setProgress(0, "Uploading...", "row-status font-medium text-blue-600 whitespace-nowrap");
+
+            const xhr = new XMLHttpRequest();
+            xhr.open("POST", "/upload");
+
+            xhr.upload.addEventListener("progress", (e) => {
+              if (e.lengthComputable) {
+                const percent = Math.round((e.loaded / e.total) * 100);
+                row.setProgress(
+                  percent,
+                  `Uploading... ${percent}%`,
+                  "row-status font-medium text-blue-600 whitespace-nowrap"
+                );
+              }
+            });
+
+            xhr.addEventListener("load", () => {
+              let resp = {};
+              try {
+                resp = JSON.parse(xhr.responseText);
+              } catch (err) {
+                resp = {};
+              }
+
+              if (xhr.status === 200 && resp.status === "ok") {
+                row.setBarClass(
+                  "row-bar bg-green-600 h-2 rounded-full transition-all duration-300"
+                );
+                row.setProgress(100, "Completed", "row-status font-medium text-green-600 whitespace-nowrap");
+                resolve({ ok: true });
+              } else if (xhr.status === 409 || resp.status === "conflict") {
+                if (
+                  confirm(
+                    `"${file.name}" already exists at the destination. Overwrite it?`
+                  )
+                ) {
+                  doUpload(true);
+                } else {
+                  row.setBarClass(
+                    "row-bar bg-yellow-500 h-2 rounded-full transition-all duration-300"
+                  );
+                  row.setProgress(0, "Skipped (exists)", "row-status font-medium text-yellow-600 whitespace-nowrap");
+                  resolve({ ok: false, skipped: true });
+                }
+              } else {
+                row.setBarClass(
+                  "row-bar bg-red-600 h-2 rounded-full transition-all duration-300"
+                );
+                row.setProgress(0, "Failed", "row-status font-medium text-red-600 whitespace-nowrap");
+                resolve({ ok: false, message: resp.message || "Unknown error" });
+              }
+            });
+
+            xhr.addEventListener("error", () => {
+              row.setBarClass(
+                "row-bar bg-red-600 h-2 rounded-full transition-all duration-300"
+              );
+              row.setProgress(0, "Failed", "row-status font-medium text-red-600 whitespace-nowrap");
+              resolve({ ok: false, message: "Network error" });
+            });
+
+            xhr.send(formData);
+          };
+
+          doUpload(false);
+        });
+      }
+
+      async function uploadFile() {
         const fileInput = document.getElementById("upload-file");
-        const file = fileInput.files[0];
-        if (!file) {
-          alert("Please choose a file to upload.");
+        const files = Array.from(fileInput.files);
+        if (files.length === 0) {
+          alert("Please choose one or more files to upload.");
           return;
         }
 
@@ -777,62 +875,35 @@
           }
         }
 
-        const doUpload = (overwrite) => {
-          const formData = new FormData();
-          formData.append("file", file);
-          formData.append("mediaType", mediaType);
-          if (showName) formData.append("showName", showName);
-          formData.append("overwrite", overwrite ? "true" : "false");
+        const btn = document.getElementById("upload-btn");
+        const overallStatus = document.getElementById("upload-status");
+        const list = document.getElementById("upload-progress-list");
+        list.innerHTML = "";
+        btn.disabled = true;
 
-          const btn = document.getElementById("upload-btn");
-          btn.disabled = true;
-          setUploadProgress(0, "Uploading...", "font-medium text-blue-600");
+        let completed = 0;
+        let uploaded = 0;
+        const total = files.length;
 
-          const xhr = new XMLHttpRequest();
-          xhr.open("POST", "/upload");
+        for (const file of files) {
+          completed += 1;
+          overallStatus.textContent = `Uploading ${completed} of ${total}...`;
+          overallStatus.className = "font-medium text-blue-600";
+          const row = createUploadRow(file.name);
+          const result = await uploadSingleFile(file, mediaType, showName, row);
+          if (result.ok) uploaded += 1;
+        }
 
-          xhr.upload.addEventListener("progress", (e) => {
-            if (e.lengthComputable) {
-              const percent = Math.round((e.loaded / e.total) * 100);
-              setUploadProgress(percent, "Uploading...", "font-medium text-blue-600");
-            }
-          });
+        btn.disabled = false;
+        overallStatus.textContent = `Uploaded ${uploaded} of ${total} file${total !== 1 ? "s" : ""}.`;
+        overallStatus.className =
+          uploaded === total ? "font-medium text-green-600" : "font-medium text-yellow-600";
 
-          xhr.addEventListener("load", () => {
-            btn.disabled = false;
-            let resp = {};
-            try {
-              resp = JSON.parse(xhr.responseText);
-            } catch (err) {
-              resp = {};
-            }
-
-            if (xhr.status === 200 && resp.status === "ok") {
-              setUploadProgress(100, "Completed", "font-medium text-green-600");
-              fileInput.value = "";
-              // Reload so the new file shows up in the destination-aware UI
-              setTimeout(() => location.reload(), 1000);
-            } else if (xhr.status === 409 || resp.status === "conflict") {
-              setUploadProgress(0, "File exists", "font-medium text-red-600");
-              if (confirm("A file with this name already exists at the destination. Overwrite it?")) {
-                doUpload(true);
-              }
-            } else {
-              setUploadProgress(0, "Failed", "font-medium text-red-600");
-              alert(`Upload error: ${resp.message || "Unknown error"}`);
-            }
-          });
-
-          xhr.addEventListener("error", () => {
-            btn.disabled = false;
-            setUploadProgress(0, "Failed", "font-medium text-red-600");
-            alert("Upload failed. Please try again.");
-          });
-
-          xhr.send(formData);
-        };
-
-        doUpload(false);
+        if (uploaded > 0) {
+          fileInput.value = "";
+          // Reload so the new files show up in the destination-aware UI
+          setTimeout(() => location.reload(), 1500);
+        }
       }
 
       function moveFile(file) {
