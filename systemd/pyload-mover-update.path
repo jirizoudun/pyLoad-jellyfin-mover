@@ -3,8 +3,8 @@ Description=Watch for pyLoad Jellyfin Mover self-update requests
 
 [Path]
 # Fires the matching .service when the flag file appears.
-# Edit this path if your repo does not live in /opt/pyLoad-jellyfin-mover.
-PathExists=/opt/pyLoad-jellyfin-mover/update_trigger/update.request
+# Edit this path if your repo does not live in /opt/stacks/pyLoad-jellyfin-mover.
+PathExists=/opt/stacks/pyLoad-jellyfin-mover/update_trigger/update.request
 
 [Install]
 WantedBy=multi-user.target

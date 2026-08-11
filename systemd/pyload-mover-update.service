@@ -3,9 +3,9 @@ Description=Rebuild pyLoad Jellyfin Mover on self-update request
 
 [Service]
 Type=oneshot
-# Edit these paths if your repo does not live in /opt/pyLoad-jellyfin-mover.
-WorkingDirectory=/opt/pyLoad-jellyfin-mover
-ExecStart=/opt/pyLoad-jellyfin-mover/update-watcher.sh
+# Edit these paths if your repo does not live in /opt/stacks/pyLoad-jellyfin-mover.
+WorkingDirectory=/opt/stacks/pyLoad-jellyfin-mover
+ExecStart=/opt/stacks/pyLoad-jellyfin-mover/update-watcher.sh
 
 # Runs as root by default, which can drive docker and remove the (root-owned)
 # flag file the container writes. If you run docker as a non-root user, set

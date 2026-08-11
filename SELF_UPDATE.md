@@ -18,14 +18,14 @@ just writes a flag file that never gets acted on.
 ## One-time host setup
 
 These steps run **on the home server**, once. They assume the repo lives at
-`/opt/pyLoad-jellyfin-mover` — adjust the paths if yours differs.
+`/opt/stacks/pyLoad-jellyfin-mover` — adjust the paths if yours differs.
 
 ### Option A — systemd path unit (recommended)
 
 Watches the trigger folder and rebuilds the instant the flag appears.
 
 ```bash
-# 1. Point the units at your repo location (skip if it's /opt/pyLoad-jellyfin-mover).
+# 1. Point the units at your repo location (skip if it's /opt/stacks/pyLoad-jellyfin-mover).
 #    Edit the paths inside these two files first:
 #      systemd/pyload-mover-update.path
 #      systemd/pyload-mover-update.service
@@ -49,7 +49,7 @@ journalctl -u pyload-mover-update.service -f
 Simpler, no systemd; checks once a minute.
 
 ```cron
-* * * * * /opt/pyLoad-jellyfin-mover/update-watcher.sh >> /var/log/pyload-mover-update.log 2>&1
+* * * * * /opt/stacks/pyLoad-jellyfin-mover/update-watcher.sh >> /var/log/pyload-mover-update.log 2>&1
 ```
 
 `update-watcher.sh` is a no-op when there's no flag, so polling is cheap.
@@ -74,7 +74,7 @@ LAN / behind your firewall — do not expose it to the public internet.
 
 ```bash
 # Simulate what the button does, from the host:
-touch /opt/pyLoad-jellyfin-mover/update_trigger/update.request
+touch /opt/stacks/pyLoad-jellyfin-mover/update_trigger/update.request
 # systemd (Option A) rebuilds immediately; cron (Option B) within a minute.
 # Or run the watcher directly:
 ./update-watcher.sh
